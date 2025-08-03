@@ -53,10 +53,60 @@
 <img width="999" height="799" alt="image" src="https://github.com/user-attachments/assets/9dcbb39b-07f0-4585-b205-6546251e8836" />
 <p style="line-height: 100%; margin-bottom: 0cm;">&nbsp;</p>
 <p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;"><b>3) Доработать unit-файл Nginx (nginx.service) для запуска нескольких инстансов сервера с разными конфигурационными файлами одновременно</b></span></p>
-<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">TEXT HERE</span></p>
-<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">TEXT HERE</span></p>
-<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">TEXT HERE</span></p>
-<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">TEXT HERE</span></p>
-<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">TEXT HERE</span></p>
-<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">TEXT HERE</span></p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Установим Nginx из стандартного репозитория:</span></p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">root@training:~# apt install nginx -y</span></p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Для запуска нескольких экземпляров сервиса модифицируем исходный service для использования различных конфигураций, а также PID-файлов. Для этого создадим новый Unit для работы с шаблонами (/etc/systemd/system/nginx@.service):</span></p>
+<p>root@training:~# cat /etc/systemd/system/nginx@.service<br /># Stop dance for nginx<br /># =======================<br />#<br /># ExecStop sends SIGSTOP (graceful stop) to the nginx process.<br /># If, after 5s (--retry QUIT/5) nginx is still running, systemd takes control<br /># and sends SIGTERM (fast shutdown) to the main process.<br /># After another 5s (TimeoutStopSec=5), and if nginx is alive, systemd sends<br /># SIGKILL to all the remaining processes in the process group (KillMode=mixed).<br />#<br /># nginx signals reference doc:<br /># http://nginx.org/en/docs/control.html<br />#<br />[Unit]<br />Description=A high performance web server and a reverse proxy server<br />Documentation=man:nginx(8)<br />After=network.target nss-lookup.target</p>
+<p>[Service]<br />Type=forking<br />PIDFile=/run/nginx-%I.pid<br />ExecStartPre=/usr/sbin/nginx -t -c /etc/nginx/nginx-%I.conf -q -g 'daemon on; master_process on;'<br />ExecStart=/usr/sbin/nginx -c /etc/nginx/nginx-%I.conf -g 'daemon on; master_process on;'<br />ExecReload=/usr/sbin/nginx -c /etc/nginx/nginx-%I.conf -g 'daemon on; master_process on;' -s reload<br />ExecStop=-/sbin/start-stop-daemon --quiet --stop --retry QUIT/5 --pidfile /run/nginx-%I.pid<br />TimeoutStopSec=5<br />KillMode=mixed</p>
+<p>[Install]<br />WantedBy=multi-user.target<br />root@training:~#</p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Далее необходимо создать два файла конфигурации (/etc/nginx/nginx-first.conf, /etc/nginx/nginx-second.conf). Их можно сформировать из стандартного конфига /etc/nginx/nginx.conf, с модификацией путей до PID-файлов и разделением по портам:</span></p>
+<p>root@training:~# cat /etc/nginx/nginx-first.conf<br />user www-data;<br />worker_processes auto;<br />pid /run/nginx-first.pid;<br />error_log /var/log/nginx/error.log;<br />include /etc/nginx/modules-enabled/*.conf;</p>
+<p>events {<br /> worker_connections 768;<br /> # multi_accept on;<br />}</p>
+<p>http {</p>
+<p>##<br /> # Basic Settings<br /> ##<br /> server {<br /> listen 9001;<br /> }</p>
+<p>sendfile on;<br /> tcp_nopush on;<br /> types_hash_max_size 2048;<br /> # server_tokens off;</p>
+<p># server_names_hash_bucket_size 64;<br /> # server_name_in_redirect off;</p>
+<p>include /etc/nginx/mime.types;<br /> default_type application/octet-stream;</p>
+<p>##<br /> # SSL Settings<br /> ##</p>
+<p>ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE<br /> ssl_prefer_server_ciphers on;</p>
+<p>##<br /> # Logging Settings<br /> ##</p>
+<p>access_log /var/log/nginx/access.log;</p>
+<p>##<br /> # Gzip Settings<br /> ##</p>
+<p>gzip on;</p>
+<p># gzip_vary on;<br /> # gzip_proxied any;<br /> # gzip_comp_level 6;<br /> # gzip_buffers 16 8k;<br /> # gzip_http_version 1.1;<br /> # gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;</p>
+<p>##<br /> # Virtual Host Configs<br /> ##</p>
+<p>include /etc/nginx/conf.d/*.conf;<br /> #include /etc/nginx/sites-enabled/*;<br />}</p>
+<p><br />#mail {<br /># # See sample authentication script at:<br /># # http://wiki.nginx.org/ImapAuthenticateWithApachePhpScript<br />#<br /># # auth_http localhost/auth.php;<br /># # pop3_capabilities "TOP" "USER";<br /># # imap_capabilities "IMAP4rev1" "UIDPLUS";<br />#<br /># server {<br /># listen localhost:110;<br /># protocol pop3;<br /># proxy on;<br /># }<br />#<br /># server {<br /># listen localhost:143;<br /># protocol imap;<br /># proxy on;<br /># }<br />#}<br />root@training:~# </p>
+<p>root@training:~# cat /etc/nginx/nginx-second.conf<br />user www-data;<br />worker_processes auto;<br />pid /run/nginx-second.pid;<br />error_log /var/log/nginx/error.log;<br />include /etc/nginx/modules-enabled/*.conf;</p>
+<p>events {<br /> worker_connections 768;<br /> # multi_accept on;<br />}</p>
+<p>http {</p>
+<p>##<br /> # Basic Settings<br /> ##<br /> server {<br /> listen 9002;<br /> }</p>
+<p>sendfile on;<br /> tcp_nopush on;<br /> types_hash_max_size 2048;<br /> # server_tokens off;</p>
+<p># server_names_hash_bucket_size 64;<br /> # server_name_in_redirect off;</p>
+<p>include /etc/nginx/mime.types;<br /> default_type application/octet-stream;</p>
+<p>##<br /> # SSL Settings<br /> ##</p>
+<p>ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE<br /> ssl_prefer_server_ciphers on;</p>
+<p>##<br /> # Logging Settings<br /> ##</p>
+<p>access_log /var/log/nginx/access.log;</p>
+<p>##<br /> # Gzip Settings<br /> ##</p>
+<p>gzip on;</p>
+<p># gzip_vary on;<br /> # gzip_proxied any;<br /> # gzip_comp_level 6;<br /> # gzip_buffers 16 8k;<br /> # gzip_http_version 1.1;<br /> # gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;</p>
+<p>##<br /> # Virtual Host Configs<br /> ##</p>
+<p>include /etc/nginx/conf.d/*.conf;<br /> #include /etc/nginx/sites-enabled/*;<br />}</p>
+<p><br />#mail {<br /># # See sample authentication script at:<br /># # http://wiki.nginx.org/ImapAuthenticateWithApachePhpScript<br />#<br /># # auth_http localhost/auth.php;<br /># # pop3_capabilities "TOP" "USER";<br /># # imap_capabilities "IMAP4rev1" "UIDPLUS";<br />#<br /># server {<br /># listen localhost:110;<br /># protocol pop3;<br /># proxy on;<br /># }<br />#<br /># server {<br /># listen localhost:143;<br /># protocol imap;<br /># proxy on;<br /># }<br />#}<br />root@training:~#</p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Этого достаточно для успешного запуска сервисов.</span></p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Проверим работу:</span></p>
+<p>root@training:~# systemctl start nginx@first<br />root@training:~# systemctl start nginx@second<br />root@training:~# systemctl status nginx@first<br />root@training:~# systemctl status nginx@second</p>
+<img width="1317" height="902" alt="image" src="https://github.com/user-attachments/assets/840fd56c-41e6-4bc3-b4d2-d29048c5f0af" />
 <p style="line-height: 100%; margin-bottom: 0cm;">&nbsp;</p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Проверить можно несколькими способами, например, посмотреть, какие порты слушаются:</span></p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">root@training:~# ss -tnulp | grep nginx</span></p>
+<img width="1317" height="143" alt="image" src="https://github.com/user-attachments/assets/98e4566d-6f05-4792-8cf0-16c1ba679251" />
+<p style="line-height: 100%; margin-bottom: 0cm;">&nbsp;</p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Или просмотреть список процессов:</span></p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">root@training:~# ps afx | grep nginx</span></p>
+<img width="1317" height="206" alt="image" src="https://github.com/user-attachments/assets/663744d9-8c4a-4e04-aaa6-868a04274556" />
+<p style="line-height: 100%; margin-bottom: 0cm;">&nbsp;</p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Видим две группы процессов Nginx, всё в порядке.</span></p>
+<p style="line-height: 100%; margin-bottom: 0cm;">&nbsp;</p>
+<p style="line-height: 108%; margin-bottom: 0.28cm;" align="justify"><span style="font-family: Roboto, serif;">Задание завершено.</span></p>
